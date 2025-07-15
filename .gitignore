@@ -1,0 +1,7 @@
+*.csv
+!products-with-estimated-prices.csv
+.env
+.venv/
+.DS_Store
+.ipynb_checkpoints/
+*.zip
