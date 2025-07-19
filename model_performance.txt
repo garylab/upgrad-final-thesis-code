@@ -1,2 +1,0 @@
-Random Forest Accuracy: 0.7307
-XGBoost Accuracy: 0.7375
