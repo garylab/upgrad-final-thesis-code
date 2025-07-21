@@ -31,6 +31,10 @@ def main():
         # Step 1: Data Preprocessing
         logger.info("🔄 STEP 1: DATA PREPROCESSING")
         sampled_df, merged_df, products_df = preprocess_data()
+        logger.info(f"Sampled DataFrame shape: {sampled_df.shape}")
+        logger.info(f"Merged DataFrame shape: {merged_df.shape}")
+        logger.info(f"Products DataFrame shape: {products_df.shape}")
+        return
         
         # Step 2: LLM Feature Generation
         logger.info("🤖 STEP 2: LLM FEATURE GENERATION")

@@ -49,7 +49,7 @@ Or install manually:
 pip install pandas numpy scikit-learn xgboost
 pip install sentence-transformers openai python-dotenv
 pip install networkx imbalanced-learn
-pip install plotly matplotlib seaborn
+pip install plotly kaleido matplotlib seaborn
 pip install joblib loguru
 ```
 
@@ -72,6 +72,11 @@ python main.py
 #### Quick Demo (reduced dataset)
 ```bash
 python main.py --demo
+```
+
+#### Test Visualization System
+```bash
+python test_visualizations.py
 ```
 
 ## 📊 Module Details
@@ -142,6 +147,13 @@ python main.py --demo
 - **Feature Engineering**: Traditional + LLM-enhanced features
 - **Model Comparison**: Base vs enhanced model evaluation
 
+### Comprehensive Visualizations
+- **Multi-Format Output**: PNG (high-res), SVG (vector), HTML (interactive)
+- **Publication Ready**: High-quality graphics suitable for academic papers
+- **Interactive Charts**: Plotly-powered with hover tooltips and zoom
+- **Fallback Support**: Matplotlib backup if plotly fails
+- **Individual Components**: Separate charts for focused analysis
+
 ## 📈 Expected Results
 
 The system typically demonstrates:
@@ -189,6 +201,8 @@ Extend `src/analysis.py` with additional visualizations or metrics specific to y
 2. **Processing Time**: Full pipeline can take 30-60 minutes depending on data size
 3. **Memory Usage**: Ensure sufficient RAM for large embeddings and network analysis
 4. **Rate Limiting**: Built-in delays for API calls to respect rate limits
+5. **Image Export**: Requires `kaleido` package for PNG/SVG export (included in requirements.txt)
+6. **Output Directory**: Creates `output/` folder automatically for all visualizations
 
 ## 🔄 Development Workflow
 
@@ -199,12 +213,33 @@ Extend `src/analysis.py` with additional visualizations or metrics specific to y
 
 ## 📝 Output Files
 
-The system generates:
+The system generates comprehensive results in multiple formats:
+
+### 📊 **Visualizations (`output/` directory)**
+- `comprehensive_analysis.png`: Complete analysis dashboard (PNG, high-res)
+- `feature_importance_by_category.png`: Feature category breakdown
+- `top_features.png`: Top 15 most important features  
+- `model_performance.png`: Base vs Enhanced model comparison
+- `revenue_impact.png`: Revenue impact analysis
+
+### 📱 **Interactive Files**
+- `*.html`: Interactive plotly versions of all charts
+- Hover tooltips, zoom, and pan capabilities
+- Responsive design for web viewing
+
+### 🎨 **Vector Graphics**
+- `*.svg`: Scalable vector versions for publications
+- High-quality graphics for academic papers
+- Infinitely scalable without quality loss
+
+### 📁 **Model & Data Files**
 - `llm_enhanced_recommendation_model.pkl`: Trained model artifacts
 - `llm_enhanced_results.json`: Comprehensive performance metrics
+
+### 📋 **Logs**
 - `logs/recommendation_system.log`: Detailed execution logs
-- Interactive plotly visualizations
 - Structured console output with colored logging
+- Complete audit trail of execution
 
 ## 🤝 Contributing
 
