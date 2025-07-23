@@ -6,6 +6,8 @@ from tqdm import tqdm
 from openai import OpenAI
 import os
 from pydantic import BaseModel
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 
 class NewFeatures(BaseModel):
@@ -19,12 +21,14 @@ class NewFeatures(BaseModel):
 
 
 class LLMFeatures:
-    def __init__(self):
+    def __init__(self, max_workers=5):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.max_workers = max_workers
+        self.lock = threading.Lock()
     
     def extract_core_features(self, product_name, department, aisle) -> NewFeatures:
         """
-        Extract only the 5 most impactful semantic features + price
+        Extract only the core LLM features defined in NewFeatures
         """
         prompt = f"""
         Product: {product_name}
@@ -80,13 +84,22 @@ class LLMFeatures:
                 price=3.99
             )
     
-    
+    def process_single_product(self, row):
+        """Process a single product - used for threading"""
+        features = self.extract_core_features(
+            row['product_name'],
+            row['department'], 
+            row['aisle']
+        )
+        feature_dict = features.model_dump()
+        feature_dict['product_id'] = row['product_id']
+        return feature_dict
     
     def add_efficient_features(self, sample_size=None):
         """
-        Add only the most efficient features for maximum impact
+        Extract only LLM features and save to llm_features.csv
         """
-        print("Adding efficient LLM features...")
+        print("Extracting LLM features...")
         
         df = pd.read_csv('dataset/products.csv')
         if sample_size:
@@ -103,81 +116,117 @@ class LLMFeatures:
         df_sample = df_sample.merge(departments_df, on='department_id', how='left')
         df_sample = df_sample.merge(aisles_df, on='aisle_id', how='left')
         
-        # Step 1: LLM semantic features (including price estimation)
-        print("Extracting LLM features (including price)...")
+        # Get unique products for LLM processing
         unique_products = df_sample[['product_id', 'product_name', 'department', 'aisle']].drop_duplicates()
         
+        print(f"Processing {len(unique_products)} unique products with {self.max_workers} threads...")
+        
+        # Multi-threaded LLM feature extraction
         semantic_features_list = []
-        for idx, row in tqdm(unique_products.iterrows(), total=len(unique_products), desc="Processing"):
-            features = self.extract_core_features(
-                row['product_name'],
-                row['department'], 
-                row['aisle']
-            )
-            # Create dictionary with product_id and features
-            feature_dict = features.model_dump()
-            feature_dict['product_id'] = row['product_id']
-            semantic_features_list.append(feature_dict)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all tasks
+            future_to_row = {
+                executor.submit(self.process_single_product, row): row 
+                for idx, row in unique_products.iterrows()
+            }
+            
+            # Process completed tasks with progress bar
+            for future in tqdm(as_completed(future_to_row), total=len(future_to_row), desc="LLM Processing"):
+                try:
+                    result = future.result()
+                    semantic_features_list.append(result)
+                except Exception as e:
+                    row = future_to_row[future]
+                    print(f"Error processing product {row['product_id']}: {e}")
         
-        semantic_df = pd.DataFrame(semantic_features_list)
-        df_enhanced = df_sample.merge(semantic_df, on='product_id', how='left')
+        # Create DataFrame with LLM features
+        llm_features_df = pd.DataFrame(semantic_features_list)
         
-        # Step 2: Core price features using LLM-extracted price (3 features)
-        print("Adding price features using LLM price...")
+        # Save LLM features to CSV
+        llm_features_df.to_csv('dataset/products_llm_features.csv', index=False)
+        print(f"Saved {len(llm_features_df)} products with LLM features to 'dataset/products_llm_features.csv'")
+        print("LLM features:", [col for col in llm_features_df.columns if col != 'product_id'])
+        
+        return llm_features_df
+    
+    def add_derived_features(self, df, llm_features_df=None):
+        """
+        Add derived features dynamically before training
+        """
+        print("Adding derived features...")
+        
+        # Load LLM features if not provided
+        if llm_features_df is None:
+            if os.path.exists('dataset/llm_features.csv'):
+                llm_features_df = pd.read_csv('dataset/llm_features.csv')
+                print("Loaded existing LLM features from llm_features.csv")
+            else:
+                raise FileNotFoundError("LLM features file not found. Run add_efficient_features() first.")
+        
+        # Merge with input dataframe
+        df_enhanced = df.merge(llm_features_df, on='product_id', how='left')
+        
+        # Price-based features (3 features)
+        print("Adding price features...")
         df_enhanced['price_percentile'] = df_enhanced.groupby('department_id')['price'].rank(pct=True)
         df_enhanced['is_premium_priced'] = (df_enhanced['price_percentile'] > 0.7).astype(int)
         df_enhanced['price_vs_dept_avg'] = df_enhanced['price'] / df_enhanced.groupby('department_id')['price'].transform('mean')
         
-        # Step 3: Create 3 high-impact derived features
-        print("Creating derived features...")
-        # Revenue potential = premium score × necessity (premium necessities = high revenue)
+        # Derived semantic features (3 features)
+        print("Adding derived semantic features...")
         df_enhanced['revenue_potential'] = df_enhanced['premium_score'] * df_enhanced['necessity_score']
-        
-        # Basket expansion = cross-sell × impulse (items that lead to bigger baskets)
         df_enhanced['basket_expansion_score'] = df_enhanced['cross_sell_score'] * (10 - df_enhanced['impulse_score'])
-        
-        # Price-premium alignment = LLM price vs actual department percentile
         df_enhanced['price_premium_alignment'] = df_enhanced['premium_score'] * df_enhanced['price_percentile']
         
-        print(f"Added {len(df_enhanced.columns) - len(df.columns)} efficient features")
-        print("New features:", [col for col in df_enhanced.columns if col not in df.columns])
-
+        new_features = [
+            'premium_score', 'necessity_score', 'impulse_score', 'cross_sell_score', 'is_food', 'price',
+            'price_percentile', 'is_premium_priced', 'price_vs_dept_avg', 
+            'revenue_potential', 'basket_expansion_score', 'price_premium_alignment'
+        ]
+        
+        print(f"Added {len(new_features)} total features")
+        print("All new features:", new_features)
+        
         return df_enhanced
     
-    def get_feature_list(self):
-        """Return list of all new features created"""
+    def get_llm_feature_names(self):
+        """Get list of LLM feature names"""
+        return ['premium_score', 'necessity_score', 'impulse_score', 'cross_sell_score', 'is_food', 'price']
+    
+    def get_derived_feature_names(self):
+        """Get list of derived feature names"""
         return [
-            # Text categorical features from merging (2)
-            'department', 'aisle',
-            
-            # Price features (3)
-            'price_percentile', 'is_premium_priced', 'price_vs_dept_avg',
-            
-            # LLM semantic features (5 - including extracted price)
-            'premium_score', 'necessity_score', 'impulse_score', 'cross_sell_score', 'price',
-            
-            # Derived features (3)
-            'revenue_potential', 'basket_expansion_score', 'price_premium_alignment',
-            
-            # Categorical (1)
-            'is_food'
+            'price_percentile', 'is_premium_priced', 'price_vs_dept_avg', 
+            'revenue_potential', 'basket_expansion_score', 'price_premium_alignment'
         ]
+    
+    def get_all_feature_names(self):
+        """Get list of all feature names"""
+        return self.get_llm_feature_names() + self.get_derived_feature_names()
+
 
 # Usage:
 def main():
-    # Initialize
-    feature_engineer = LLMFeatures()
+    # Initialize with 5 concurrent threads
+    feature_engineer = LLMFeatures(max_workers=10)
     
-    df_enhanced = feature_engineer.add_efficient_features(sample_size=5)
+    # Step 1: Extract LLM features and save to llm_features.csv (test with small sample)
+    llm_features_df = feature_engineer.add_efficient_features()
+    
+    # Step 2: Example of how to use derived features before training
+    print("\n" + "="*50)
+    print("Example: Adding derived features before training")
+    
+    # Load original products data
+    products_df = pd.read_csv('dataset/products.csv')
+    
+    # Add all features dynamically
+    df_with_all_features = feature_engineer.add_derived_features(products_df)
+    
+    # Save complete dataset
+    df_with_all_features.to_csv('dataset/products_with_all_features.csv', index=False)
+    print(f"Saved complete dataset with all features to 'dataset/products_with_all_features.csv'")
 
-    df_enhanced.to_csv('dataset/products_enhanced_5.csv', index=False)
-    # Get list of new features for your ML models
-    new_features = feature_engineer.get_feature_list()
-    print(f"Total new features: {len(new_features)}")
-
-    # Use in your Random Forest/XGBoost
-    # X = df_enhanced[original_features + new_features]
-    # model.fit(X, y)
 
 if __name__ == "__main__":
     main()
