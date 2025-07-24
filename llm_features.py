@@ -157,9 +157,9 @@ class LLMFeatures:
         
         # Load LLM features if not provided
         if llm_features_df is None:
-            if os.path.exists('dataset/llm_features.csv'):
-                llm_features_df = pd.read_csv('dataset/llm_features.csv')
-                print("Loaded existing LLM features from llm_features.csv")
+            if os.path.exists('dataset/products_llm_features.csv'):
+                llm_features_df = pd.read_csv('dataset/products_llm_features.csv')
+                print("Loaded existing LLM features from products_llm_features.csv")
             else:
                 raise FileNotFoundError("LLM features file not found. Run add_efficient_features() first.")
         
@@ -168,15 +168,15 @@ class LLMFeatures:
         
         # Price-based features (3 features)
         print("Adding price features...")
-        df_enhanced['price_percentile'] = df_enhanced.groupby('department_id')['price'].rank(pct=True)
+        df_enhanced['price_percentile'] = df_enhanced.groupby('department_id')['price'].rank(pct=True).round(2)
         df_enhanced['is_premium_priced'] = (df_enhanced['price_percentile'] > 0.7).astype(int)
-        df_enhanced['price_vs_dept_avg'] = df_enhanced['price'] / df_enhanced.groupby('department_id')['price'].transform('mean')
+        df_enhanced['price_vs_dept_avg'] = (df_enhanced['price'] / df_enhanced.groupby('department_id')['price'].transform('mean')).round(2)
         
         # Derived semantic features (3 features)
         print("Adding derived semantic features...")
-        df_enhanced['revenue_potential'] = df_enhanced['premium_score'] * df_enhanced['necessity_score']
-        df_enhanced['basket_expansion_score'] = df_enhanced['cross_sell_score'] * (10 - df_enhanced['impulse_score'])
-        df_enhanced['price_premium_alignment'] = df_enhanced['premium_score'] * df_enhanced['price_percentile']
+        df_enhanced['revenue_potential'] = (df_enhanced['premium_score'] * df_enhanced['necessity_score']).round(2)
+        df_enhanced['basket_expansion_score'] = (df_enhanced['cross_sell_score'] * (10 - df_enhanced['impulse_score'])).round(2)
+        df_enhanced['price_premium_alignment'] = (df_enhanced['premium_score'] * df_enhanced['price_percentile']).round(2)
         
         new_features = [
             'premium_score', 'necessity_score', 'impulse_score', 'cross_sell_score', 'is_food', 'price',
@@ -207,11 +207,11 @@ class LLMFeatures:
 
 # Usage:
 def main():
-    # Initialize with 5 concurrent threads
+    # Initialize with 10 concurrent threads
     feature_engineer = LLMFeatures(max_workers=10)
     
     # Step 1: Extract LLM features and save to llm_features.csv (test with small sample)
-    llm_features_df = feature_engineer.add_efficient_features()
+    #llm_features_df = feature_engineer.add_efficient_features()
     
     # Step 2: Example of how to use derived features before training
     print("\n" + "="*50)
@@ -229,4 +229,5 @@ def main():
 
 
 if __name__ == "__main__":
+    # Run test to show rounding
     main()
